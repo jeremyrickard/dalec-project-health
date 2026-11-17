@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>DALEC / Project health</title>
+<script>
+(() => {
+  const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+  const theme =
+    param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", theme);
+  if (param === "light" || param === "dark") document.documentElement.setAttribute("data-theme", param);
+})();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+* { box-sizing: border-box }
+body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font: 15px/1.5 "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif }
+header { border-bottom: 1px solid var(--cp-border); background: var(--cp-surface); padding: 20px max(24px, calc((100vw - 1400px)/2)) }
+.brand { letter-spacing: .16em; font-weight: 750; font-size: 13px; color: var(--cp-accent) }
+.header-row,.row { display: flex; align-items: center; justify-content: space-between; gap: 16px }
+main { max-width: 1448px; margin: auto; padding: 32px 24px 48px }
+h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 650; letter-spacing: -.04em; margin: 8px 0 }
+h2 { font-size: 20px; margin: 0 }
+h3 { font-size: 16px; margin: 0 0 8px }
+p { margin: 8px 0 }
+.muted,small { color: var(--cp-text-muted) }
+.mono,code { font-family: Consolas, "Courier New", Courier, monospace; font-size: 12px; overflow-wrap: anywhere }
+.intro { margin-bottom: 28px }
+.eyebrow { color: var(--cp-accent); text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 700 }
+.stats { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 12px; margin-bottom: 24px }
+.stat,.project { border: 1px solid var(--cp-border); background: var(--cp-surface); border-radius: 16px }
+.stat { padding: 16px 20px }
+.stat strong { font-size: 30px; line-height: 1.3; display: block; font-weight: 650 }
+.stat span { font-size: 12px; color: var(--cp-text-muted) }
+.toolbar { background: var(--cp-bg-elevated); border: 1px solid var(--cp-border); border-radius: .625rem; padding: 16px; display: grid; grid-template-columns: 2fr repeat(5,1fr); gap: 12px; margin: 16px 0 }
+label { display: flex; flex-direction: column; font-size: 11px; color: var(--cp-text-muted); gap: 4px; font-weight: 650 }
+input,select,button { border: 1px solid var(--cp-border); border-radius: .625rem; padding: 10px 12px; background: var(--cp-surface); color: var(--cp-text); font: inherit; min-width: 0 }
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible,a:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 3px }
+button { cursor: pointer; font-size: 12px }
+button:hover { border-color: var(--cp-accent); color: var(--cp-accent) }
+.project { padding: 20px; margin: 12px 0 }
+.project-heading { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 24px; align-items: start; margin-bottom: 16px }
+a { color: var(--cp-link); text-decoration: none; overflow-wrap: anywhere }
+a:hover { text-decoration: underline }
+.badge { display: inline-block; font-size: 11px; font-weight: 650; padding: 3px 8px; border: 1px solid var(--cp-border); border-radius: .625rem; color: var(--cp-text-muted); background: var(--cp-surface-soft); margin: 2px 6px 2px 0 }
+.badge.accent { background: var(--cp-accent-soft); color: var(--cp-accent); border-color: var(--cp-accent) }
+.badge.good { color: var(--cp-success) }
+.notice { border-left: 3px solid var(--cp-warning); background: var(--cp-surface); padding: 12px 16px; border-radius: .625rem; margin-bottom: 20px }
+.notice strong { color: var(--cp-text) }
+details { border-top: 1px solid var(--cp-border); padding-top: 12px; margin-top: 12px }
+summary { cursor: pointer; color: var(--cp-text-soft); font-size: 13px }
+.version { background: var(--cp-bg-elevated); border: 1px solid var(--cp-border); border-radius: .625rem; margin-top: 12px; padding: 16px }
+.version-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px }
+dl { margin: 0; min-width: 0 }
+dt { font-size: 11px; color: var(--cp-text-muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 8px }
+dd { margin: 2px 0 4px; overflow-wrap: anywhere; font-size: 13px }
+.evidence { font-size: 12px; margin-top: 12px }
+.empty { text-align: center; padding: 48px; color: var(--cp-text-muted) }
+footer { border-top: 1px solid var(--cp-border); margin-top: 28px; padding-top: 16px; font-size: 12px; color: var(--cp-text-muted) }
+progress { accent-color: var(--cp-accent); width: 100%; height: 6px }
+@media(max-width:1000px) { .stats { grid-template-columns: repeat(3,1fr) } .toolbar { grid-template-columns: 2fr 1fr } .toolbar label:first-child { grid-column: span 2 } }
+@media(max-width:640px) { main { padding: 24px 16px } .stats { grid-template-columns: repeat(2,1fr) } .project-heading,.version-grid { grid-template-columns: 1fr; gap: 12px } .project { padding: 16px } .row { align-items: start } }
+</style>
+</head>
+<body>
+<header><div class="header-row"><div class="brand">DALEC <span class="muted">/ PROJECT HEALTH</span></div><button id="theme" type="button" aria-label="Toggle light and dark theme">Switch theme</button></div></header>
+<main>
+<section class="intro"><div class="eyebrow">Upstream intelligence / local snapshot</div><h1>A clearer view of what we define.</h1><p class="muted">Source-backed versions, container image identities, and upstream signals. Evidence first; unknown when we cannot know.</p><p id="provenance" class="mono muted"></p></section>
+<div id="status"></div>
+<section class="stats" id="stats" aria-label="Inventory summary"></section>
+<div class="row"><div><h2>Project inventory</h2><small>Expand a project to inspect every component, version, target, and source.</small></div><button id="reset" type="button">Reset filters</button></div>
+<form class="toolbar" onsubmit="return false">
+<label>SEARCH INVENTORY<input id="search" type="search" placeholder="Project, component, spec path, or image..." autocomplete="off"></label>
+<label>SUPPORT LIFECYCLE<select id="lifecycle"><option value="">All lifecycles</option><option>Unknown</option><option>Active</option><option>Maintenance</option><option>End of life</option></select></label>
+<label>LFX ACTIVITY<select id="activity"><option value="">All activity</option><option>active</option><option>stable</option><option>declining</option><option>inert</option><option>abandoned</option><option>archived</option><option>Unknown</option></select></label>
+<label>UPDATES<select id="update"><option value="">All versions</option><option>Major</option><option>Minor</option><option>Patch</option><option>Current</option><option>Unknown</option></select></label>
+<label>ENRICHMENT<select id="missing"><option value="">All coverage</option><option value="missing">Missing / partial data</option><option value="complete">Release + LFX coverage</option></select></label>
+<label>SORT BY<select id="sort"><option value="project">Project name</option><option value="age">Oldest known age</option><option value="freshness">Update significance</option></select></label>
+</form>
+<p id="count" class="muted" role="status" aria-live="polite"></p>
+<section id="projects" aria-label="Project results"></section>
+<details id="diagnostics"><summary>Generation diagnostics</summary><div id="diagnostic-list"></div></details>
+<footer>This inventory describes definitions in the input checkout, not images verified as built or published. Support/EOL remains Unknown without authoritative evidence. LFX lifecycle is a separate activity assessment, not a support promise. GitHub tags/releases may not represent every supported version. All filtering runs locally; this page makes no network requests.</footer>
+</main>
+<noscript>This offline dashboard requires JavaScript. The companion project-health.json contains the complete report.</noscript>
+<script id="report" type="application/json">{{.}}</script>
+<script>
+"use strict";
+const data = JSON.parse(document.getElementById("report").textContent);
+const $ = id => document.getElementById(id);
+const versions = p => p.components.flatMap(c => c.versions);
+const isUpdate = v => ["Major","Minor","Patch"].includes(v.freshness.update);
+const complete = p => p.lfx.status === "Available" && p.lfx.score !== null && versions(p).every(v => v.freshness.status === "Available" && v.freshness.ageDays !== null);
+function node(tag, text, cls) { const e=document.createElement(tag); if(text!==undefined) e.textContent=String(text); if(cls) e.className=cls; return e; }
+function link(text, href) { const a=node("a",text); try { const u=new URL(href); if(["https:","http:"].includes(u.protocol) && !u.username && !u.password) { a.href=u.href; a.target="_blank"; a.rel="noopener noreferrer"; } } catch {} return a; }
+function badge(text, cls) { return node("span",text,"badge "+(cls||"")); }
+function field(dl,key,value) { dl.append(node("dt",key)); const dd=node("dd"); if(value instanceof Node) dd.append(value); else dd.textContent=value || "Unknown"; dl.append(dd); }
+function stat(value,label) { const e=node("div",undefined,"stat"); e.append(node("strong",value),node("span",label)); $("stats").append(e); }
+const all=data.projects.flatMap(versions), known=data.projects.filter(p=>p.repository);
+stat(known.length,"Identified upstreams");
+stat(all.length,"Spec versions / variants");
+stat(all.filter(isUpdate).length,"Versions with updates");
+stat(data.projects.filter(p=>p.lifecycle!=="Unknown").length,"Known support lifecycle");
+stat(data.projects.filter(p=>p.lfx.status==="Available").length+"/"+known.length,"LFX identity coverage");
+stat(all.filter(v=>v.freshness.ageDays!==null).length+"/"+all.length,"Versions with known age");
+$("provenance").textContent="Generated "+data.generatedAt+" | Source "+data.source.revision+(data.source.dirty?" (modified specs)":"")+" | Schema "+data.schemaVersion;
+const notice=node("div",undefined,"notice");
+notice.append(node("strong",data.partial?"Partial enrichment snapshot":"Inventory snapshot"),node("p",data.partial?"External requests failed. Inventory is preserved; affected enrichment is explicitly marked below.":"Missing coverage is shown as Unknown, never as a zero score or an inferred end-of-life date.","muted"));
+$("status").append(notice);
+for(const d of data.diagnostics) $("diagnostic-list").append(node("p",d.provider+" / "+d.subject+": "+d.message,"mono"));
+if(!data.diagnostics.length) $("diagnostic-list").append(node("p","No operational diagnostics."));
+function projectName(p) { return p.repository ? p.repository.replace("https://","") : p.components[0].name+" / Unknown upstream"; }
+function renderProject(p) {
+ const article=node("article",undefined,"project"), head=node("div",undefined,"project-heading"), title=node("div");
+ title.append(node("h3",projectName(p)));
+ title.append(badge(p.components.length+" component"+(p.components.length===1?"":"s")),badge(versions(p).length+" spec variants"));
+ const updates=versions(p).filter(isUpdate).length; if(updates) title.append(badge(updates+" with updates","accent"));
+ title.append(node("p",p.reason,"muted"));
+ if(p.github && p.github.archived) title.append(badge("GitHub repository archived","accent"));
+ if(p.repository) title.append(link("Open upstream repository",p.repository));
+ const support=node("div"); support.append(node("div","SUPPORT LIFECYCLE","eyebrow"),badge(p.lifecycle));
+ support.append(node("p","No authoritative support/EOL assertion is inferred from activity or version lag.","muted"));
+ const health=node("div"), h=p.lfx;
+ health.append(node("div","LFX INSIGHTS","eyebrow"));
+ if(h.status==="Available") {
+   health.append(node("strong",h.score===null?"Unscored":h.score+" / "+h.maxScore),node("span"," "+(h.label||"Unknown label"),"muted"));
+   if(h.score!==null && h.maxScore>0) { const bar=node("progress"); bar.max=h.maxScore; bar.value=h.score; bar.setAttribute("aria-label","LFX Health Score v2"); health.append(bar); }
+   health.append(node("p","Activity: "+h.lifecycle+" | Categories: "+(h.coverage===null?"Unknown":h.coverage+"/3"),"muted"));
+   const scope=h.scope==="project"?"Project-level assessment (may span repositories)":h.scope==="repo"?"Repository assessment":"Assessment scope Unknown (may span repositories)";
+   health.append(link(h.name||h.slug,h.evidenceUrl),node("p",scope+" | "+h.retrievedAt,"mono muted"));
+   if(h.identityGitHub) health.append(link("LFX GitHub identity",h.identityGitHub),node("span"," | "));
+   if(h.identityWebsite) health.append(link("LFX website identity",h.identityWebsite));
+ } else health.append(badge(h.status),node("p",h.reason,"muted"));
+ head.append(title,support,health); article.append(head);
+ const details=node("details"), summary=node("summary","Inspect components, versions, images & evidence"); details.append(summary);
+ for(const c of p.components) {
+  const section=node("section"); section.append(node("h3",c.name));
+  for(const v of c.versions) {
+   const block=node("div",undefined,"version"), f=v.freshness, row=node("div",undefined,"row");
+   const heading=node("div"); heading.append(node("strong",v.packageVersion),node("span","  revision "+v.revision,"mono muted"));
+   row.append(heading,badge(f.update==="Current"?"Current":f.update==="Unknown"?"Update unknown":f.update+" available",isUpdate(v)?"accent":f.update==="Current"?"good":"")); block.append(row);
+   const grid=node("div",undefined,"version-grid"), left=node("dl"),right=node("dl");
+   field(left,"Spec path",v.path); field(left,"Source ref",v.ref); field(left,"Resolved upstream tag",f.resolvedTag);
+   field(left,"Defined container images",v.images.length?v.images.map(i=>i.identity+" ["+i.targets.join(", ")+"]").join("\n"):"No container image");
+   field(left,"Build targets",v.targets.join(", "));
+   field(right,"Age",f.ageDays===null?"Unknown":f.ageDays+" days ("+f.ageKind+")");
+   field(right,"Upstream date",f.date); field(right,"Latest stable in component stream",f.latestStable);
+   field(right,"Latest stable in same major.minor line",f.latestInLine+(f.lineUpdate?" (update available)":""));
+   field(right,"Enrichment",f.status+": "+f.reason);
+   grid.append(left,right); block.append(grid);
+   const evidence=node("div",undefined,"evidence");
+   if(f.evidenceUrl) evidence.append(link("Age / release evidence",f.evidenceUrl),node("span"," | "));
+   if(v.website) evidence.append(link("Spec website",v.website));
+   if(f.retrievedAt) evidence.append(node("p","Retrieved "+f.retrievedAt,"mono muted"));
+   for(const candidate of v.candidates) { const p=node("p"); p.append(node("span",candidate.source+": ")); p.append(link(candidate.repository,candidate.repository),node("span"," @ "+candidate.ref,"mono")); evidence.append(p); }
+   block.append(evidence); section.append(block);
+  }
+  details.append(section);
+ }
+ article.append(details); return article;
+}
+function render() {
+ const query=$("search").value.toLowerCase(), lifecycle=$("lifecycle").value, activity=$("activity").value, update=$("update").value, missing=$("missing").value;
+ let projects=data.projects.filter(p=>{
+  const search=[p.repository,...p.components.flatMap(c=>[c.name,...c.versions.flatMap(v=>[v.path,v.packageVersion,...v.images.map(i=>i.identity)])])].join(" ").toLowerCase();
+  return search.includes(query) && (!lifecycle||p.lifecycle===lifecycle) && (!activity||p.lfx.lifecycle===activity) && (!update||versions(p).some(v=>v.freshness.update===update)) && (!missing||(missing==="complete"?complete(p):!complete(p)));
+ });
+ const age=p=>Math.max(-1,...versions(p).map(v=>v.freshness.ageDays??-1)), rank=p=>Math.max(0,...versions(p).map(v=>({Major:4,Minor:3,Patch:2,Unknown:1,Current:0}[v.freshness.update]??1)));
+ projects.sort((a,b)=>($("sort").value==="age"?age(b)-age(a):$("sort").value==="freshness"?rank(b)-rank(a):0)||projectName(a).localeCompare(projectName(b)));
+ $("projects").replaceChildren(...projects.map(renderProject));
+ $("count").textContent=projects.length+" of "+data.projects.length+" project groups shown";
+ if(!projects.length) $("projects").append(node("p","No matching projects. Try resetting the filters.","empty"));
+}
+for(const id of ["search","lifecycle","activity","update","missing","sort"]) $(id).addEventListener("input",render);
+$("reset").addEventListener("click",()=>{for(const id of ["search","lifecycle","activity","update","missing"]) $(id).value=""; $("sort").value="project"; render();});
+$("theme").addEventListener("click",()=>document.documentElement.setAttribute("data-theme",document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark"));
+render();
+</script>
+</body>
+</html>

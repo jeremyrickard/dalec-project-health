@@ -1,0 +1,18 @@
+name: widget
+description: Synthetic variant for dashboard tests
+website: https://widget.example.org
+version: 9.1.0
+revision: "2"
+license: MIT
+sources:
+  project:
+    git:
+      url: https://github.com/example/widget
+      commit: v1.2.9
+x-build-extensions:
+  repository: synthetic
+  build-targets: [azlinux3/container, ubuntu/container, azlinux3/rpm]
+  per-target:
+    ubuntu:
+      repository: synthetic-ubuntu
+      image-name: widget-ubuntu

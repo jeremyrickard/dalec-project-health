@@ -1,0 +1,15 @@
+name: widget
+description: Synthetic example component for dashboard tests
+website: https://widget.example.org
+version: 9.0.0
+revision: "1"
+license: MIT
+args:
+  COMMIT: v1.2.3
+sources:
+  project:
+    git:
+      url: https://github.com/example/widget
+      commit: ${COMMIT}
+x-build-extensions:
+  repository: synthetic

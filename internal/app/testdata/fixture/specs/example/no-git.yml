@@ -1,0 +1,8 @@
+name: no-git
+description: Synthetic source-free package
+website: https://unknown.example.org
+version: 1.0.0
+revision: "1"
+license: MIT
+x-build-extensions:
+  build-targets: [azlinux3/rpm]

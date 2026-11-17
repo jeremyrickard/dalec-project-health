@@ -1,0 +1,13 @@
+name: agent
+description: Synthetic package-only component
+website: https://agent.example.org
+version: 2.4.0
+revision: "1"
+license: MIT
+sources:
+  project:
+    git:
+      url: https://github.com/example/agent
+      commit: agent/v2.4.0
+x-build-extensions:
+  build-targets: [azlinux3/rpm]

@@ -1,0 +1,17 @@
+name: ambiguous
+description: Synthetic ambiguous source identity
+website: https://unknown.example.org
+version: 1.0.0
+revision: "1"
+license: MIT
+sources:
+  a:
+    git:
+      url: https://github.com/example/candidate-a
+      commit: v1.0.0
+  b:
+    git:
+      url: https://github.com/example/candidate-b
+      commit: v1.0.0
+x-build-extensions:
+  build-targets: [azlinux3/rpm]
