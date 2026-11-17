@@ -97,13 +97,14 @@ func (g *GitHub) Snapshot(ctx context.Context, repository string) (Snapshot, err
 			}
 			s.Releases = append(s.Releases, Release{ID: release.GetID(), Tag: release.GetTagName(), Date: date, Unstable: release.GetDraft() || release.GetPrerelease()})
 		}
-		if res.NextPage == 0 {
+		next, err := nextGitHubPage(res, opts.Page)
+		if err != nil {
+			return s, err
+		}
+		if next == 0 {
 			break
 		}
-		if res.NextPage <= max(opts.Page, 1) {
-			return s, fmt.Errorf("GitHub release pagination did not advance")
-		}
-		opts.Page = res.NextPage
+		opts.Page = next
 	}
 	s.ReleasesComplete = true
 	for tag, err := range g.Tags.GetTags(ctx, owner+"/"+repo) {

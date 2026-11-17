@@ -248,13 +248,14 @@ func (g *GitHub) Activity(ctx context.Context, repository string, s Snapshot, as
 		for _, commit := range commits {
 			c.add(commit)
 		}
-		if res.NextPage == 0 {
+		next, err := nextGitHubPage(res, opts.Page)
+		if err != nil {
+			return fail(err)
+		}
+		if next == 0 {
 			break
 		}
-		if res.NextPage <= max(opts.Page, 1) {
-			return fail(fmt.Errorf("GitHub commit pagination did not advance"))
-		}
-		opts.Page = res.NextPage
+		opts.Page = next
 	}
 	a := c.finish(g.Now(), true)
 	if !a.WindowComplete {

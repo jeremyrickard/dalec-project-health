@@ -214,7 +214,8 @@ claim. Known partial metrics remain visible as observed lower bounds, with
 Contributor completeness is independent from commit/release window completeness.
 Missing required commit metadata invalidates full commit counts. Requests use the
 existing cancellation, retries, rate limits, two-minute per-upstream budget, and
-total generation budget; there is no silent page cap. Busy histories can exhaust
+total generation budget; there is no silent page cap. Unreadable or non-advancing
+pagination is incomplete evidence, not proof that the history has ended. Busy histories can exhaust
 those budgets, save a partial report, and exit nonzero. No additional activity
 queries run for projects with complete LFX evidence.
 

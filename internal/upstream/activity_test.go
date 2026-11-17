@@ -293,7 +293,7 @@ func (r rejectingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 }
 
 func TestActivityCoverageFailuresNeverClaimInactivity(t *testing.T) {
-	for _, mode := range []string{"inaccessible branch", "timeout", "pagination did not advance"} {
+	for _, mode := range []string{"inaccessible branch", "timeout", "pagination did not advance", "malformed next page"} {
 		t.Run(mode, func(t *testing.T) {
 			var server *httptest.Server
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -310,7 +310,11 @@ func TestActivityCoverageFailuresNeverClaimInactivity(t *testing.T) {
 					fmt.Fprint(w, `{"commit":{"sha":"pinned"}}`)
 					return
 				}
-				w.Header().Set("Link", fmt.Sprintf("<%s/repos/example/repo/commits?page=1>; rel=\"next\"", server.URL))
+				page := "1"
+				if mode == "malformed next page" {
+					page = "invalid"
+				}
+				w.Header().Set("Link", fmt.Sprintf("<%s/repos/example/repo/commits?page=%s>; rel=\"next\"", server.URL, page))
 				body, _ := json.Marshal([]*github.RepositoryCommit{activityCommit("one", activityAsOf.Add(-time.Hour), 1)})
 				w.Write(body)
 			}))
