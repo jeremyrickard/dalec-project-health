@@ -68,13 +68,55 @@ are used. Without a token GitHub's unauthenticated limits apply. LFX uses only i
 supported public unauthenticated endpoints. Dependency build authentication and
 runtime enrichment authentication are independent.
 
-`--timeout 15m` is the default total generation budget. Each upstream gets a
-two-minute budget; individual HTTP requests have a 25-second timeout. Requests
-are deduplicated and paced (GitHub at approximately 9 requests/second; LFX below
-its default 200 requests/60 seconds). HTTP 429, rate-limit 403, transport failures,
-and 5xx responses get at most two retries. `Retry-After` and rate-limit reset
-headers are honored; waits longer than five seconds fail explicitly instead of
-blocking indefinitely. Cancellation stops pending work.
+GitHub fetch budgets are independent:
+
+| Flag | Default | Scope |
+|---|---|---|
+| `--timeout` | `30m` | Entire inventory/enrichment run, including all rate-limit waits |
+| `--request-timeout` | `60s` | One GitHub HTTP attempt, including reading its response, excluding queue/rate waits |
+| `--upstream-timeout` | `10m` | Working time for one upstream's metadata, releases, tags, activity, and source-ref lookups |
+
+Coordinated GitHub rate-limit and queue waits **pause the upstream working
+budget**, never the total run deadline. Request attempts, ordinary pacing,
+transient retry backoff, and local processing consume working time. Cancellation
+interrupts requests, queueing, and waits. If a known rate reset cannot fit within
+the remaining run budget, fetches fail explicitly without sending more requests.
+After cancellation/deadline, completed local inventory and known partial evidence
+are still saved before a nonzero exit; output writing is not abandoned at the deadline.
+For larger histories, for example:
+
+```sh
+./dalec-project-health generate \
+  --build-defs-dir /path/to/dalec-build-defs \
+  --output-dir /path/to/private-reports/latest \
+  --timeout 45m --request-timeout 90s --upstream-timeout 15m
+```
+
+Every GitHub path (including azcu tag helpers) uses one read-only, serialized
+HTTP coordinator with in-generation successful/404 request reuse and approximately
+9 requests/second pacing. SDK preflight rate checks and azcu's separate retry
+transport are bypassed so there is **one retry owner**, not multiplying retry layers.
+HTTP 429 and genuine primary/secondary rate-limit 403 responses honor
+`Retry-After` (seconds or HTTP date) and exhausted `X-RateLimit-Remaining` /
+`X-RateLimit-Reset` headers, including proactive waits after a successful response
+uses the last available request. Headerless/malformed-header rate limits wait
+at least a minute, exponentially increasing on repeated failures; positive jitter
+avoids retrying early. There is no five-second GitHub rate-wait cutoff.
+
+Each failed request/page gets at most **five attempts (four retries)**.
+Transient network/read failures, per-attempt timeouts, and 5xx responses use
+exponential backoff (1/2/4/8 seconds plus up to 25% jitter); server `Retry-After`
+can extend that backoff. Retries resume the failed page, not completed pages.
+Ordinary auth/permission 403 and terminal 400/401/404/422 responses are not retried;
+an invalid ref is never presented as a rate limit. Diagnostics identify the
+sanitized operation/repository/ref/page, HTTP status, attempts/retries and known
+retry-at time, distinguishing request timeout, upstream working budget, run
+deadline, cancellation, network failure, and exhausted rate-limit budget.
+Request headers, credential-bearing URLs, raw response bodies and raw network
+error strings are not copied into diagnostics.
+
+LFX behavior is unchanged: below its default 200 requests/60 seconds, 25-second
+HTTP timeout, up to two transient retries, and at most five-second rate waits.
 
 ### Exit and failure semantics
 
@@ -213,11 +255,14 @@ claim. Known partial metrics remain visible as observed lower bounds, with
 `count: null` and `complete: false`; exact totals use `count` and `complete: true`.
 Contributor completeness is independent from commit/release window completeness.
 Missing required commit metadata invalidates full commit counts. Requests use the
-existing cancellation, retries, rate limits, two-minute per-upstream budget, and
+shared GitHub cancellation, retries, rate limits, upstream working budget, and
 total generation budget; there is no silent page cap. Unreadable or non-advancing
 pagination is incomplete evidence, not proof that the history has ended. Busy histories can exhaust
 those budgets, save a partial report, and exit nonzero. No additional activity
 queries run for projects with complete LFX evidence.
+If freshness tag/release fetching fails, known exact-ref release ages can still
+be shown as Partial, but latest-version comparisons stay Unknown until the
+snapshot is complete.
 
 Activity is **not** evidence of health, maintenance, support, or EOL. Support
 lifecycle remains Unknown without authoritative evidence, regardless of activity.

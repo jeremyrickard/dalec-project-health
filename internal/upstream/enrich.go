@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jeremyrickard/dalec-project-health/internal/netx"
 	"github.com/jeremyrickard/dalec-project-health/internal/report"
 )
 
 var versionTag = regexp.MustCompile(`^(.*?)(v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$`)
 var wordPrefix = regexp.MustCompile(`^[A-Za-z]+$`)
+
+const DefaultUpstreamTimeout = 10 * time.Minute
 
 func splitTag(tag string) (string, *semver.Version) {
 	m := versionTag.FindStringSubmatch(tag)
@@ -31,6 +34,10 @@ func splitTag(tag string) (string, *semver.Version) {
 }
 
 func Enrich(ctx context.Context, r *report.Report, provider Provider, now func() time.Time) {
+	EnrichWithTimeout(ctx, r, provider, now, DefaultUpstreamTimeout)
+}
+
+func EnrichWithTimeout(ctx context.Context, r *report.Report, provider Provider, now func() time.Time, timeout time.Duration) {
 	for i := range r.Projects {
 		p := &r.Projects[i]
 		if trigger := activityTrigger(*p); trigger != "" {
@@ -60,7 +67,7 @@ func Enrich(ctx context.Context, r *report.Report, provider Provider, now func()
 			}
 			continue
 		}
-		projectCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		projectCtx, cancel := netx.WithWorkingBudget(ctx, timeout)
 		snapshot, err := provider.Snapshot(projectCtx, p.Repository)
 		if snapshot.Archived != nil {
 			p.GitHub = &report.RepositoryState{Archived: *snapshot.Archived, RetrievedAt: now().UTC(), EvidenceURL: p.Repository}
@@ -79,7 +86,13 @@ func Enrich(ctx context.Context, r *report.Report, provider Provider, now func()
 			for ci := range p.Components {
 				for vi := range p.Components[ci].Versions {
 					v := &p.Components[ci].Versions[vi]
-					v.Freshness.Status, v.Freshness.Reason = "Failed", err.Error()
+					// Keep known exact-ref release ages, but never claim a
+					// latest version from an incomplete snapshot.
+					v.Freshness = Resolve(snapshot, strings.TrimPrefix(v.Ref, "refs/tags/"), Commit{}, p.Repository, now())
+					v.Freshness.Status, v.Freshness.Reason = "Partial", err.Error()
+					v.Freshness.Update = report.Unknown
+					v.Freshness.LatestStable, v.Freshness.LatestInLine = "", ""
+					v.Freshness.LineUpdate = false
 				}
 			}
 			if ctx.Err() != nil {
@@ -93,8 +106,9 @@ func Enrich(ctx context.Context, r *report.Report, provider Provider, now func()
 		for ci := range p.Components {
 			for vi := range p.Components[ci].Versions {
 				v := &p.Components[ci].Versions[vi]
-				if err := projectCtx.Err(); err != nil {
-					v.Freshness.Reason = "Enrichment not attempted: upstream request budget exhausted or cancelled"
+				if projectCtx.Err() != nil {
+					err := netx.ContextError(projectCtx)
+					v.Freshness.Reason = "Enrichment not attempted: " + err.Error()
 					if !budgetReported {
 						r.Failure("GitHub", p.Repository, err)
 						budgetReported = true
@@ -125,7 +139,7 @@ func Enrich(ctx context.Context, r *report.Report, provider Provider, now func()
 					}
 					if err != nil {
 						commitErrors[ref] = err
-						r.Failure("GitHub", p.Repository+" ref "+ref, err)
+						r.Failure("GitHub", p.Repository+" ref "+netx.SafeReference(ref), err)
 					} else {
 						commits[ref] = commit
 					}
@@ -133,7 +147,7 @@ func Enrich(ctx context.Context, r *report.Report, provider Provider, now func()
 				v.Freshness = Resolve(snapshot, ref, commit, p.Repository, now())
 				if err != nil {
 					v.Freshness.Status = "Partial"
-					v.Freshness.Reason += "; commit lookup failed"
+					v.Freshness.Reason += "; " + err.Error()
 				}
 			}
 		}

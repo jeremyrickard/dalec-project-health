@@ -16,6 +16,7 @@ import (
 	"github.com/jeremyrickard/dalec-project-health/internal/dashboard"
 	"github.com/jeremyrickard/dalec-project-health/internal/inventory"
 	"github.com/jeremyrickard/dalec-project-health/internal/lfx"
+	"github.com/jeremyrickard/dalec-project-health/internal/netx"
 	"github.com/jeremyrickard/dalec-project-health/internal/report"
 	"github.com/jeremyrickard/dalec-project-health/internal/upstream"
 )
@@ -36,15 +37,17 @@ func Run(ctx context.Context, args []string, out, warnings io.Writer, deps Depen
 	flags.SetOutput(warnings)
 	checkout := flags.String("build-defs-dir", "", "explicit input checkout; only specs/ is inventoried")
 	output := flags.String("output-dir", "", "directory for index.html and project-health.json")
-	timeout := flags.Duration("timeout", 15*time.Minute, "total generation timeout")
+	timeout := flags.Duration("timeout", 30*time.Minute, "total inventory/enrichment timeout; partial output is still saved")
+	requestTimeout := flags.Duration("request-timeout", netx.DefaultRequestTimeout, "GitHub per-attempt timeout, excluding rate-limit waits")
+	upstreamTimeout := flags.Duration("upstream-timeout", upstream.DefaultUpstreamTimeout, "GitHub per-upstream working budget, excluding rate/queue waits")
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
 	}
-	if *checkout == "" || *output == "" || flags.NArg() != 0 || *timeout <= 0 {
-		return fmt.Errorf("--build-defs-dir and --output-dir are required; timeout must be positive; positional arguments are not supported")
+	if *checkout == "" || *output == "" || flags.NArg() != 0 || *timeout <= 0 || *requestTimeout <= 0 || *upstreamTimeout <= 0 {
+		return fmt.Errorf("--build-defs-dir and --output-dir are required; timeouts must be positive; positional arguments are not supported")
 	}
 	if deps.Now == nil {
 		deps.Now = time.Now
@@ -54,21 +57,21 @@ func Run(ctx context.Context, args []string, out, warnings io.Writer, deps Depen
 		if token == "" {
 			token = os.Getenv("GH_TOKEN")
 		}
-		deps.GitHub = upstream.NewGitHub(token, nil)
+		deps.GitHub = upstream.NewGitHub(token, netx.NewGitHub(*requestTimeout))
 	}
 	if deps.LFX == nil {
 		deps.LFX = lfx.New()
 	}
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, *timeout, netx.ErrRunDeadline)
 	defer cancel()
 	r, err := inventory.Load(ctx, *checkout, deps.Now())
 	if err != nil {
 		return fmt.Errorf("inventory: %w", err)
 	}
 	lfx.Enrich(ctx, r, deps.LFX, deps.Now)
-	upstream.Enrich(ctx, r, deps.GitHub, deps.Now)
+	upstream.EnrichWithTimeout(ctx, r, deps.GitHub, deps.Now, *upstreamTimeout)
 	if ctx.Err() != nil {
-		r.Failure("generation", "deadline or cancellation", ctx.Err())
+		r.Failure("generation", "deadline or cancellation", netx.ContextError(ctx))
 	}
 	if err := Save(*output, r); err != nil {
 		return fmt.Errorf("save report: %w", err)

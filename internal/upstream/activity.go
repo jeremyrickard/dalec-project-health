@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/go-github/v84/github"
+	"github.com/jeremyrickard/dalec-project-health/internal/netx"
 	"github.com/jeremyrickard/dalec-project-health/internal/report"
 )
 
@@ -212,6 +213,7 @@ func SummarizeActivity(s Snapshot, commits []*github.RepositoryCommit, asOf, ret
 }
 
 func (g *GitHub) Activity(ctx context.Context, repository string, s Snapshot, asOf time.Time) (report.Activity, error) {
+	ctx = netx.TraceFetches(ctx)
 	c := newActivityCollector(s, asOf)
 	c.result.ReleaseEvidenceURL = repository + "/releases"
 	fail := func(err error) (report.Activity, error) {
@@ -227,7 +229,7 @@ func (g *GitHub) Activity(ctx context.Context, repository string, s Snapshot, as
 	}
 	branch, _, err := g.Client.Repositories.GetBranch(ctx, owner, repo, s.DefaultBranch, 0)
 	if err != nil {
-		return fail(providerError(err))
+		return fail(providerError(ctx, "default branch", repository, s.DefaultBranch, 0, err))
 	}
 	head := branch.GetCommit().GetSHA()
 	if head == "" {
@@ -243,7 +245,7 @@ func (g *GitHub) Activity(ctx context.Context, repository string, s Snapshot, as
 	for {
 		commits, res, err := g.Client.Repositories.ListCommits(ctx, owner, repo, opts)
 		if err != nil {
-			return fail(providerError(err))
+			return fail(providerError(ctx, "activity commits", repository, head, max(opts.Page, 1), err))
 		}
 		for _, commit := range commits {
 			c.add(commit)

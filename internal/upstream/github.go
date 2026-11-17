@@ -3,6 +3,8 @@ package upstream
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -52,13 +54,17 @@ type GitHub struct {
 
 func NewGitHub(token string, client *http.Client) *GitHub {
 	if client == nil {
-		client = netx.New(110 * time.Millisecond)
+		client = netx.NewGitHub(netx.DefaultRequestTimeout)
 	}
 	gh := github.NewClient(client)
 	if token != "" {
 		gh = gh.WithAuthToken(token)
 	}
+	// The shared transport owns rate limits and retries. SDK preflight checks
+	// otherwise return cached primary/secondary limits without reaching it.
+	gh.DisableRateLimitCheck = true
 	// Keep pagination and owner/repo parsing at the exported azcu boundary.
+	// Client injection bypasses azcu's transport construction/retry wrapper.
 	tags := azgithub.NewClient(azgithub.WithGitHubClient(&azgithub.GitHubClient{Client: gh}))
 	return &GitHub{Client: gh, Tags: tags, Now: time.Now}
 }
@@ -71,6 +77,7 @@ func ownerRepo(repository string) (string, string, error) {
 }
 
 func (g *GitHub) Snapshot(ctx context.Context, repository string) (Snapshot, error) {
+	ctx = netx.TraceFetches(ctx)
 	var s Snapshot
 	owner, repo, err := ownerRepo(repository)
 	if err != nil {
@@ -78,7 +85,7 @@ func (g *GitHub) Snapshot(ctx context.Context, repository string) (Snapshot, err
 	}
 	info, _, err := g.Client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
-		return s, providerError(err)
+		return s, providerError(ctx, "metadata", repository, "", 0, err)
 	}
 	archived := info.GetArchived()
 	s.Archived = &archived
@@ -87,7 +94,7 @@ func (g *GitHub) Snapshot(ctx context.Context, repository string) (Snapshot, err
 	for {
 		releases, res, err := g.Client.Repositories.ListReleases(ctx, owner, repo, opts)
 		if err != nil {
-			return s, providerError(err)
+			return s, providerError(ctx, "releases", repository, "", max(opts.Page, 1), err)
 		}
 		for _, release := range releases {
 			var date *time.Time
@@ -109,7 +116,7 @@ func (g *GitHub) Snapshot(ctx context.Context, repository string) (Snapshot, err
 	s.ReleasesComplete = true
 	for tag, err := range g.Tags.GetTags(ctx, owner+"/"+repo) {
 		if err != nil {
-			return s, providerError(err)
+			return s, providerError(ctx, "tags pagination", repository, "", 0, err)
 		}
 		s.Tags = append(s.Tags, Tag{Name: tag.GetName(), SHA: tag.GetCommit().GetSHA()})
 	}
@@ -117,13 +124,14 @@ func (g *GitHub) Snapshot(ctx context.Context, repository string) (Snapshot, err
 }
 
 func (g *GitHub) Commit(ctx context.Context, repository, ref string) (Commit, error) {
+	ctx = netx.TraceFetches(ctx)
 	owner, repo, err := ownerRepo(repository)
 	if err != nil {
 		return Commit{}, err
 	}
 	c, _, err := g.Client.Repositories.GetCommit(ctx, owner, repo, ref, nil)
 	if err != nil {
-		return Commit{}, providerError(err)
+		return Commit{}, providerError(ctx, "commits", repository, ref, 0, err)
 	}
 	var date *time.Time
 	if c.GetCommit().GetCommitter().Date != nil && !c.GetCommit().GetCommitter().Date.IsZero() {
@@ -133,11 +141,41 @@ func (g *GitHub) Commit(ctx context.Context, repository, ref string) (Commit, er
 	return Commit{SHA: c.GetSHA(), Date: date}, nil
 }
 
-func providerError(err error) error {
-	// Provider errors can contain credential-bearing request URLs or bodies.
-	// Retain the actionable HTTP status without copying untrusted error text.
-	if e, ok := err.(*github.ErrorResponse); ok && e.Response != nil {
-		return fmt.Errorf("GitHub HTTP %d", e.Response.StatusCode)
+func providerError(ctx context.Context, operation, repository, ref string, page int, err error) error {
+	err = netx.TracedError(ctx, err)
+	var fetch *netx.FetchError
+	if errors.As(err, &fetch) {
+		return fetch
 	}
-	return fmt.Errorf("GitHub request failed (network, rate limit, or cancellation)")
+	e := &netx.FetchError{
+		Operation: netx.Operation(operation, repository, ref, page),
+		Kind:      netx.FailureKind(ctx, err), Cause: err,
+	}
+	if ctx.Err() != nil {
+		e.Cause = netx.ContextError(ctx)
+		return e
+	}
+	var response *github.ErrorResponse
+	var primary *github.RateLimitError
+	var secondary *github.AbuseRateLimitError
+	var syntax *json.SyntaxError
+	var shape *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &syntax), errors.As(err, &shape):
+		e.Kind = "invalid provider JSON response (not retried)"
+	case errors.As(err, &primary):
+		e.Kind, e.RetryAt = "primary rate limit", primary.Rate.Reset.Time
+		if primary.Response != nil {
+			e.Status = primary.Response.StatusCode
+		}
+	case errors.As(err, &secondary):
+		e.Kind = "secondary rate limit"
+		if secondary.Response != nil {
+			e.Status = secondary.Response.StatusCode
+		}
+	case errors.As(err, &response) && response.Response != nil:
+		e.Status = response.Response.StatusCode
+		e.Kind = netx.HTTPFailure(e.Status)
+	}
+	return e
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/go-github/v84/github"
 	"github.com/jeremyrickard/dalec-project-health/internal/lfx"
+	"github.com/jeremyrickard/dalec-project-health/internal/netx"
 	"github.com/jeremyrickard/dalec-project-health/internal/report"
 	"github.com/jeremyrickard/dalec-project-health/internal/upstream"
 )
@@ -190,6 +191,14 @@ func TestCommandAndOutputFailures(t *testing.T) {
 			t.Errorf("accepted invalid args %v", args)
 		}
 	}
+	for _, name := range []string{"--timeout", "--request-timeout", "--upstream-timeout"} {
+		for _, duration := range []string{"0s", "-1s"} {
+			args := []string{"generate", "--build-defs-dir", "testdata/fixture", "--output-dir", t.TempDir(), name, duration}
+			if err := Run(context.Background(), args, &bytes.Buffer{}, &bytes.Buffer{}, fixtureDeps(false)); err == nil {
+				t.Errorf("accepted invalid %s %s", name, duration)
+			}
+		}
+	}
 	file := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(file, []byte("occupied"), 0o600); err != nil {
 		t.Fatal(err)
@@ -204,5 +213,51 @@ func TestCommandAndOutputFailures(t *testing.T) {
 	var out, warnings bytes.Buffer
 	if err := Run(context.Background(), []string{"generate", "--build-defs-dir", "testdata/fixture", "--output-dir", dir}, &out, &warnings, fixtureDeps(false)); err == nil || out.Len() != 0 {
 		t.Fatal("rename failure was reported as success")
+	}
+}
+
+type budgetGit struct{}
+
+func (budgetGit) Snapshot(ctx context.Context, _ string) (upstream.Snapshot, error) {
+	<-ctx.Done()
+	return upstream.Snapshot{}, netx.ContextError(ctx)
+}
+func (budgetGit) Commit(ctx context.Context, _, _ string) (upstream.Commit, error) {
+	return upstream.Commit{}, netx.ContextError(ctx)
+}
+func (budgetGit) Activity(ctx context.Context, _ string, s upstream.Snapshot, asOf time.Time) (report.Activity, error) {
+	return upstream.SummarizeActivity(s, nil, asOf, asOf, false), netx.ContextError(ctx)
+}
+
+func TestConfiguredBudgetsSaveExplicitPartialReport(t *testing.T) {
+	for _, scope := range []string{"run", "upstream"} {
+		t.Run(scope, func(t *testing.T) {
+			args := []string{"generate", "--build-defs-dir", "testdata/fixture", "--output-dir", t.TempDir()}
+			want := "generation/run deadline exhausted"
+			if scope == "run" {
+				args = append(args, "--timeout", "200ms")
+			} else {
+				args = append(args, "--timeout", "2s", "--upstream-timeout", "20ms")
+				want = "upstream working budget exhausted"
+			}
+			deps := fixtureDeps(false)
+			deps.GitHub = budgetGit{}
+			var out, warnings bytes.Buffer
+			err := Run(context.Background(), args, &out, &warnings, deps)
+			if !errors.Is(err, ErrPartial) || !strings.Contains(warnings.String(), want) {
+				t.Fatalf("deadline scope or partial exit lost: %v / %s", err, &warnings)
+			}
+			data, err := os.ReadFile(filepath.Join(args[4], "project-health.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var r report.Report
+			if err := json.Unmarshal(data, &r); err != nil || len(r.Projects) != 8 || !r.Partial {
+				t.Fatalf("deadline discarded local inventory: %v", err)
+			}
+			if scope == "upstream" && strings.Contains(warnings.String(), "generation/run deadline") {
+				t.Fatal("upstream timeout incorrectly exhausted the whole run")
+			}
+		})
 	}
 }
