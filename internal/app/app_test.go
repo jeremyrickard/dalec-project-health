@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-github/v84/github"
 	"github.com/jeremyrickard/dalec-project-health/internal/lfx"
 	"github.com/jeremyrickard/dalec-project-health/internal/report"
 	"github.com/jeremyrickard/dalec-project-health/internal/upstream"
@@ -18,18 +20,47 @@ import (
 
 type gitFixture struct{ fail bool }
 
-func (g gitFixture) Snapshot(context.Context, string) (upstream.Snapshot, error) {
+func (g gitFixture) Snapshot(_ context.Context, repository string) (upstream.Snapshot, error) {
 	if g.fail {
 		return upstream.Snapshot{}, fmt.Errorf("synthetic provider unavailable")
 	}
 	date := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
-	return upstream.Snapshot{
+	s := upstream.Snapshot{
+		DefaultBranch: "main", ReleasesComplete: true,
 		Tags:     []upstream.Tag{{Name: "v1.2.3"}, {Name: "v1.2.9"}, {Name: "v1.8.0"}, {Name: "agent/v2.4.0"}},
 		Releases: []upstream.Release{{Tag: "v1.2.3", Date: &date}, {Tag: "v1.2.9", Date: &date}, {Tag: "agent/v2.4.0", Date: &date}},
-	}, nil
+	}
+	if strings.HasSuffix(repository, "/quiet") {
+		s.Releases = nil
+	}
+	return s, nil
 }
 func (gitFixture) Commit(context.Context, string, string) (upstream.Commit, error) {
 	return upstream.Commit{SHA: "synthetic-commit"}, nil
+}
+func (g gitFixture) Activity(_ context.Context, repository string, s upstream.Snapshot, asOf time.Time) (report.Activity, error) {
+	if g.fail {
+		return upstream.SummarizeActivity(s, nil, asOf, asOf, false), fmt.Errorf("synthetic activity unavailable")
+	}
+	commits := []*github.RepositoryCommit{}
+	if strings.HasSuffix(repository, "/agent") || strings.HasSuffix(repository, "/partial") {
+		for i := range 12 {
+			commits = append(commits, &github.RepositoryCommit{
+				SHA: github.Ptr(fmt.Sprintf("synthetic-%d", i)), Parents: []*github.Commit{},
+				Author: &github.User{ID: github.Ptr(int64(1)), Login: github.Ptr("synthetic-author"), Type: github.Ptr("User")},
+				Commit: &github.Commit{Committer: &github.CommitAuthor{Date: &github.Timestamp{Time: asOf.Add(-time.Duration(1+i%3*30) * 24 * time.Hour)}}},
+			})
+		}
+	}
+	complete := !strings.HasSuffix(repository, "/partial")
+	a := upstream.SummarizeActivity(s, commits, asOf, asOf, complete)
+	a.HeadSHA = "synthetic-main-head"
+	a.EvidenceURL = repository + "/commits/" + a.HeadSHA
+	a.ReleaseEvidenceURL = repository + "/releases"
+	if !complete {
+		return a, fmt.Errorf("synthetic pagination interrupted; observed counts are lower bounds")
+	}
+	return a, nil
 }
 
 type lfxFixture struct{}
@@ -49,7 +80,7 @@ func fixtureDeps(fail bool) Dependencies {
 func TestGenerateFixture(t *testing.T) {
 	dir := t.TempDir()
 	var out, warnings bytes.Buffer
-	if err := Run(context.Background(), []string{"generate", "--build-defs-dir", "testdata/fixture", "--output-dir", dir}, &out, &warnings, fixtureDeps(false)); err != nil {
+	if err := Run(context.Background(), []string{"generate", "--build-defs-dir", "testdata/fixture", "--output-dir", dir}, &out, &warnings, fixtureDeps(false)); !errors.Is(err, ErrPartial) {
 		t.Fatal(err)
 	}
 	dt, err := os.ReadFile(filepath.Join(dir, "project-health.json"))
@@ -61,13 +92,31 @@ func TestGenerateFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	count := 0
+	bands := map[string]int{}
 	for _, p := range r.Projects {
+		if p.Activity != nil {
+			bands[p.Activity.Band]++
+		} else if p.Repository != "https://github.com/example/widget" {
+			t.Fatal("only complete native LFX should skip activity")
+		}
 		for _, c := range p.Components {
 			count += len(c.Versions)
+			if c.Name == "synthetic-worker" {
+				v := c.Versions[0]
+				if p.Repository != "" || v.Ref != "" || len(v.Candidates) != 0 || len(v.Images) != 3 {
+					t.Fatal("source-free frontend worker lost images or acquired invented source provenance")
+				}
+			}
 		}
 	}
-	if count != 5 || len(r.Projects) != 4 || r.Partial {
+	if count != 9 || len(r.Projects) != 8 || !r.Partial {
 		t.Fatalf("bad smoke counts: projects=%d versions=%d partial=%t", len(r.Projects), count, r.Partial)
+	}
+	if r.SchemaVersion != "2" || bands["Sustained activity"] != 1 || bands["Some activity"] != 1 || bands["No observed activity"] != 1 || bands[report.Unknown] != 4 {
+		t.Fatalf("bad activity smoke coverage: %v", bands)
+	}
+	if bytes.Contains(dt, []byte("synthetic-author")) {
+		t.Fatal("transient contributor identity persisted")
 	}
 	if smokeDir := os.Getenv("DALEC_HEALTH_SMOKE_DIR"); smokeDir != "" {
 		if err := Save(smokeDir, &r); err != nil {
@@ -101,6 +150,9 @@ func (g cancellingGit) Snapshot(context.Context, string) (upstream.Snapshot, err
 func (cancellingGit) Commit(context.Context, string, string) (upstream.Commit, error) {
 	return upstream.Commit{}, context.Canceled
 }
+func (cancellingGit) Activity(_ context.Context, _ string, s upstream.Snapshot, asOf time.Time) (report.Activity, error) {
+	return upstream.SummarizeActivity(s, nil, asOf, asOf, false), context.Canceled
+}
 
 func TestExternalCancellationPreservesInventoryAndReason(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -120,7 +172,7 @@ func TestExternalCancellationPreservesInventoryAndReason(t *testing.T) {
 	if err := json.Unmarshal(dt, &r); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Projects) != 4 || !r.Partial {
+	if len(r.Projects) != 8 || !r.Partial {
 		t.Fatal("cancellation lost inventory")
 	}
 	found := false

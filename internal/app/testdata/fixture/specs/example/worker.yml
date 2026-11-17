@@ -1,0 +1,26 @@
+name: synthetic-worker
+description: Original synthetic frontend worker without a Git source
+website: https://github.com/example/frontend
+version: 0.1.0
+revision: "1"
+license: MIT
+args:
+  COMMIT: unused-commit-argument
+x-build-extensions:
+  repository: synthetic/workers/default
+  image-name: worker
+  build-targets:
+    - azlinux3/worker
+    - jammy/worker
+    - windowscross
+    - noble/testing/container
+    - azlinux3/rpm
+    - debug/worker
+    - debug/sources
+  per-target:
+    jammy:
+      repository: synthetic/workers/jammy
+      image-name: jammy-worker
+    windowscross:
+      repository: synthetic/workers/windows
+      image-name: cross-worker

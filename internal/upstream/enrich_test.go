@@ -105,11 +105,15 @@ func TestGitHubPaginationAndCommit(t *testing.T) {
 			if r.URL.Query().Get("page") == "" {
 				w.Header().Set("Link", fmt.Sprintf("<%s/repos/example/repo/releases?page=2>; rel=\"next\"", server.URL))
 			}
-			fmt.Fprint(w, `[{"tag_name":"v1.0.0","published_at":"2026-01-01T00:00:00Z"}]`)
+			fmt.Fprintf(w, `[{"id":%d,"tag_name":"v1.%d.0","published_at":"2026-10-01T00:00:00Z"}]`, releasePages, releasePages-1)
+		case strings.HasSuffix(r.URL.Path, "/branches/trunk"):
+			fmt.Fprint(w, `{"name":"trunk","commit":{"sha":"pinned"}}`)
+		case strings.HasSuffix(r.URL.Path, "/commits"):
+			fmt.Fprint(w, `[]`)
 		case strings.Contains(r.URL.Path, "/commits/"):
 			fmt.Fprint(w, `{"sha":"abc","commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}}`)
 		default:
-			fmt.Fprint(w, `{"archived":false}`)
+			fmt.Fprint(w, `{"archived":false,"default_branch":"trunk"}`)
 		}
 	}))
 	defer server.Close()
@@ -120,13 +124,17 @@ func TestGitHubPaginationAndCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tagPages != 2 || releasePages != 2 || len(s.Tags) != 2 || len(s.Releases) != 2 {
+	if tagPages != 2 || releasePages != 2 || len(s.Tags) != 2 || len(s.Releases) != 2 || !s.ReleasesComplete || s.DefaultBranch != "trunk" {
 		b, _ := json.Marshal(s)
 		t.Fatalf("pagination lost: %s (%d %d)", b, tagPages, releasePages)
 	}
 	commit, err := g.Commit(context.Background(), "https://github.com/example/repo", "abc")
 	if err != nil || commit.SHA != "abc" || commit.Date == nil {
 		t.Fatalf("commit %+v, %v", commit, err)
+	}
+	a, err := g.Activity(context.Background(), "https://github.com/example/repo", s, activityAsOf)
+	if err != nil || a.StableReleases.Count == nil || *a.StableReleases.Count != 2 || a.Band != someActivity || releasePages != 2 {
+		t.Fatalf("activity did not reuse paginated published releases: %+v %v", a, err)
 	}
 }
 
@@ -142,6 +150,10 @@ func (p *countingProvider) Snapshot(context.Context, string) (Snapshot, error) {
 func (p *countingProvider) Commit(context.Context, string, string) (Commit, error) {
 	p.commits++
 	return Commit{SHA: "abc"}, nil
+}
+func (*countingProvider) Activity(_ context.Context, _ string, s Snapshot, asOf time.Time) (report.Activity, error) {
+	s.ReleasesComplete = true
+	return SummarizeActivity(s, nil, asOf, asOf, true), nil
 }
 
 func TestPackageVersionIsNotSourceVersionAndDedup(t *testing.T) {

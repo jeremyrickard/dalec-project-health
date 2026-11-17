@@ -34,6 +34,42 @@ type Project struct {
 	GitHub     *RepositoryState `json:"github"`
 	Components []Component      `json:"components"`
 	LFX        Health           `json:"lfx"`
+	Activity   *Activity        `json:"activity,omitempty"`
+}
+
+type ActivityCount struct {
+	Count    *int `json:"count"`
+	Observed int  `json:"observed"`
+	Complete bool `json:"complete"`
+}
+
+type ActivityPeriod struct {
+	Start   time.Time     `json:"start"`
+	End     time.Time     `json:"end"`
+	Commits ActivityCount `json:"commits"`
+}
+
+type Activity struct {
+	Source               string           `json:"source"`
+	Status               string           `json:"status"`
+	Band                 string           `json:"band"`
+	Trigger              string           `json:"trigger"`
+	Reason               string           `json:"reason"`
+	MethodologyVersion   string           `json:"methodologyVersion"`
+	Methodology          string           `json:"methodology"`
+	WindowStart          time.Time        `json:"windowStart"`
+	WindowEnd            time.Time        `json:"windowEnd"`
+	RetrievedAt          *time.Time       `json:"retrievedAt"`
+	DefaultBranch        string           `json:"defaultBranch"`
+	HeadSHA              string           `json:"headSha"`
+	WindowComplete       bool             `json:"windowComplete"`
+	StableReleases       ActivityCount    `json:"stableReleases"`
+	DefaultBranchCommits ActivityCount    `json:"defaultBranchCommits"`
+	Contributors         ActivityCount    `json:"contributors"`
+	Periods              []ActivityPeriod `json:"periods"`
+	Issues               []string         `json:"issues"`
+	EvidenceURL          string           `json:"evidenceUrl"`
+	ReleaseEvidenceURL   string           `json:"releaseEvidenceUrl"`
 }
 
 type RepositoryState struct {
@@ -105,7 +141,7 @@ type Health struct {
 
 func New(now time.Time) *Report {
 	return &Report{
-		SchemaVersion: "1", GeneratedAt: now.UTC(),
+		SchemaVersion: "2", GeneratedAt: now.UTC(),
 		Source:      Source{Revision: Unknown, Scope: "Definitions in the input checkout's specs/; not proof of build or publication"},
 		Diagnostics: []Diagnostic{}, Projects: []Project{},
 	}

@@ -1,0 +1,13 @@
+name: partial
+description: Synthetic incomplete activity observation
+website: https://partial.example.org
+version: 1.2.3
+revision: "1"
+license: MIT
+sources:
+  project:
+    git:
+      url: https://github.com/example/partial
+      commit: v1.2.3
+x-build-extensions:
+  build-targets: [azlinux3/rpm]

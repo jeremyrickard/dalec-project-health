@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -155,20 +156,22 @@ x-build-extensions:
 		t.Fatalf("unexpected resolved inventory %+v", v)
 	}
 	for _, image := range v.Images {
-		if strings.Contains(image.Identity, "alternate/special") && len(image.Targets) != 1 {
-			t.Fatal("override association lost")
+		expected := map[string][]string{
+			"mcr.microsoft.com/oss/v2/alternate/special:1.2.3-1": {"ubuntu/container"},
+			"mcr.microsoft.com/oss/v2/example/widget:1.2.3-1":    {"azlinux3/container", "debian/container"},
 		}
-		if strings.Contains(image.Identity, "example/widget") && len(image.Targets) != 2 {
-			t.Fatal("default identity not deduplicated")
+		if !slices.Equal(image.Targets, expected[image.Identity]) {
+			t.Fatalf("publishing prefix or per-target association incorrect: %+v", image)
 		}
 	}
 	if strings.Contains(grouped.Repository, "secret") {
 		t.Fatal("credentials retained")
 	}
 	defaults := grouped.Components[0].Versions[1]
-	if len(defaults.Targets) != 2 || len(defaults.Images) != 1 {
+	if len(defaults.Targets) != 2 || len(defaults.Images) != 1 || defaults.Images[0].Identity != "mcr.microsoft.com/oss/v2/example/widget:1.2.3-1" {
 		t.Fatalf("defaults not applied: %+v", defaults)
 	}
+
 }
 
 func TestLoadRawCommitAndAmbiguousRefs(t *testing.T) {

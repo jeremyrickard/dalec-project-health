@@ -14,7 +14,10 @@ import (
 func TestSafeJSONAndSelfContainedHTML(t *testing.T) {
 	attack := `</script><img src=x onerror=alert(1)>`
 	r := report.New(time.Unix(0, 0))
-	r.Projects = []report.Project{{ID: attack, Repository: attack, Components: []report.Component{{Name: attack}}}}
+	r.Projects = []report.Project{{
+		ID: attack, Repository: attack, Components: []report.Component{{Name: attack}},
+		Activity: &report.Activity{Band: attack, Reason: attack, Methodology: attack, Issues: []string{attack}},
+	}}
 	var out bytes.Buffer
 	if err := Render(&out, r); err != nil {
 		t.Fatal(err)
@@ -34,12 +37,29 @@ func TestSafeJSONAndSelfContainedHTML(t *testing.T) {
 	if decoded.Projects[0].ID != attack {
 		t.Fatal("data changed by embedding")
 	}
+	if decoded.Projects[0].Activity.Methodology != attack {
+		t.Fatal("activity text changed by embedding")
+	}
 	for _, external := range []string{`<script src=`, `<link rel="stylesheet"`, "fetch(", "XMLHttpRequest", "@import"} {
 		if strings.Contains(html, external) {
 			t.Errorf("runtime external dependency: %s", external)
 		}
+
 	}
 	if !strings.Contains(html, "--cp-accent:") || !strings.Contains(html, `"Segoe UI"`) {
 		t.Fatal("required theme/font missing")
+	}
+}
+
+func TestOlderReportWithoutActivityStillRenders(t *testing.T) {
+	r := report.New(time.Unix(0, 0))
+	r.SchemaVersion = "1"
+	r.Projects = []report.Project{{ID: "older", Components: []report.Component{}}}
+	var out bytes.Buffer
+	if err := Render(&out, r); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), `"activity":null`) || !strings.Contains(out.String(), `if(p.activity)`) {
+		t.Fatal("optional activity contract is not backward compatible")
 	}
 }

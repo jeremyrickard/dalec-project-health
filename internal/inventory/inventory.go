@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	azbuild "github.com/Azure/dalec-build-defs/azcu/pkg/build"
 	"github.com/Azure/dalec-build-defs/azcu/pkg/spec"
 	"github.com/distribution/reference"
 	"github.com/jeremyrickard/dalec-project-health/internal/report"
@@ -173,15 +174,14 @@ func Load(ctx context.Context, checkout string, now time.Time) (*report.Report, 
 		sort.Strings(v.Targets)
 		images := map[string][]string{}
 		for _, target := range v.Targets {
-			// Container outputs use the "/container" target, never rpm/deb.
-			if target != "container" && !strings.HasSuffix(target, "/container") {
+			if !azbuild.IsContainerTarget(target) {
 				continue
 			}
 			image, err := spec.ImageName(s, path, target)
 			if err != nil {
 				return fmt.Errorf("%s: image identity: %w", relative, err)
 			}
-			identity := "mcr.microsoft.com/" + strings.Trim(image.Repository, "/") + "/" + image.Name + ":" + image.Tag
+			identity := "mcr.microsoft.com/oss/v2/" + strings.Trim(image.Repository, "/") + "/" + image.Name + ":" + image.Tag
 			if _, err := reference.ParseNormalizedNamed(identity); err != nil {
 				return fmt.Errorf("%s: invalid image identity", relative)
 			}

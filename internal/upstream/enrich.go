@@ -31,6 +31,19 @@ func splitTag(tag string) (string, *semver.Version) {
 }
 
 func Enrich(ctx context.Context, r *report.Report, provider Provider, now func() time.Time) {
+	for i := range r.Projects {
+		p := &r.Projects[i]
+		if trigger := activityTrigger(*p); trigger != "" {
+			a := newActivity(r.GeneratedAt)
+			a.Trigger = trigger
+			if !strings.HasPrefix(p.Repository, "https://github.com/") {
+				a.Status, a.Reason = "Unavailable", "Activity fallback requires an unambiguous GitHub upstream"
+			}
+			p.Activity = &a
+		} else {
+			p.Activity = nil
+		}
+	}
 	for pi := range r.Projects {
 		if ctx.Err() != nil {
 			return
@@ -51,6 +64,14 @@ func Enrich(ctx context.Context, r *report.Report, provider Provider, now func()
 		snapshot, err := provider.Snapshot(projectCtx, p.Repository)
 		if snapshot.Archived != nil {
 			p.GitHub = &report.RepositoryState{Archived: *snapshot.Archived, RetrievedAt: now().UTC(), EvidenceURL: p.Repository}
+		}
+		if p.Activity != nil {
+			activity, activityErr := provider.Activity(projectCtx, p.Repository, snapshot, r.GeneratedAt)
+			activity.Trigger = p.Activity.Trigger
+			p.Activity = &activity
+			if activityErr != nil {
+				r.Failure("GitHub activity", p.Repository, activityErr)
+			}
 		}
 		if err != nil {
 			cancel()

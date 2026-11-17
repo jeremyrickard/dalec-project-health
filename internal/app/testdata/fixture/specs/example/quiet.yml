@@ -1,0 +1,13 @@
+name: quiet
+description: Synthetic complete zero-activity window
+website: https://quiet.example.org
+version: 1.2.3
+revision: "1"
+license: MIT
+sources:
+  project:
+    git:
+      url: https://github.com/example/quiet
+      commit: v1.2.3
+x-build-extensions:
+  build-targets: [azlinux3/rpm]

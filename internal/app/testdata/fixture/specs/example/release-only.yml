@@ -1,0 +1,13 @@
+name: release-only
+description: Synthetic release-only activity window
+website: https://release-only.example.org
+version: 1.2.3
+revision: "1"
+license: MIT
+sources:
+  project:
+    git:
+      url: https://github.com/example/release-only
+      commit: v1.2.3
+x-build-extensions:
+  build-targets: [azlinux3/rpm]

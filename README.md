@@ -55,7 +55,9 @@ directory.
 
 Open `index.html` directly in a browser. It embeds all CSS, JavaScript, and data;
 no web server, CDN, runtime API requests, or frontend toolchain is required.
-`project-health.json` contains the same report, with `schemaVersion: "1"`.
+`project-health.json` contains the same report, with `schemaVersion: "2"`.
+Version 2 adds an optional per-project `activity` assessment; other existing
+fields are unchanged. The HTML renderer also handles version 1 data without activity.
 The HTML contains the full inventory too: **treat both outputs as private whenever
 the input definitions are private**. Do not publish real reports or screenshots
 without authorization.
@@ -90,7 +92,7 @@ blocking indefinitely. Cancellation stops pending work.
 
 **Inventory.** `internal/inventory` is a thin adapter around exported azcu
 `spec.WalkSpecs`, `spec.FromFile`, `spec.LoadExtensions`, `spec.ImageName`, and
-`spec.DefaultBuildTargets`. `FromFile` resolves default argument substitutions.
+`spec.DefaultBuildTargets`, plus `build.IsContainerTarget`. `FromFile` resolves default argument substitutions.
 `ImageName` uses `BuildExtensions.ForTarget` for target-specific overrides.
 Only production YAML under the input's `specs/` is inventoried: the library
 excludes test/template directories and matrix definitions. Production spec
@@ -110,9 +112,16 @@ repositories, an exact repository website match or a uniquely identifying raw
 evidence. Source ordering, map ordering, filenames, and similarity are never
 identity evidence. Ambiguous and no-Git specs remain visible with reasons and
 candidates. Multiple selected-repository refs leave version enrichment Unknown.
+An orphan `args.COMMIT` or a website without an actual Git source is not source-ref
+evidence. Frontend-only worker specs can legitimately have images but no source ref.
 
 Container identities use effective per-target repository/image overrides and
 default build targets, deduplicating identical images while retaining targets.
+The exported azcu target classifier includes root-only, `/worker`, `/container`,
+and nested container routes while excluding package/debug outputs according to
+that library's semantics. Images use the build-definitions publishing prefix
+**`mcr.microsoft.com/oss/v2/`**; `spec.ImageName` supplies the effective
+repository/name/tag, not the registry or publishing prefix.
 Package-only definitions explicitly show **No container image**.
 This is what the input checkout **defines**, not proof of what was built/published.
 The source revision, modified-spec status, and generation time are included.
@@ -152,10 +161,73 @@ schema. A verified slug still supplies health metrics, but absent assessment
 scope is explicitly **Unknown (may span repositories)**, never silently treated
 as a score for the selected repository.
 
+**Rolling GitHub activity fallback.** At snapshot generation, projects without a
+verified usable LFX assessment, native activity lifecycle, or scored health
+assessment get a separately labeled GitHub activity fallback/supplement. A valid
+zero LFX score is scored, not missing. Complete native LFX activity and health data
+skip activity API requests. Whatever LFX evidence exists is preserved; inferred
+activity never replaces its lifecycle or becomes an LFX/universal health score.
+Non-GitHub and ambiguous upstreams remain Unknown rather than guessing a repository.
+
+Methodology **`github-rolling-activity/v1`** uses the exact UTC half-open interval
+**`[generatedAt - 180 days, generatedAt)`**, split into six consecutive **rolling
+30-day periods**, not calendar months. Each new generation moves that window.
+All projects in a snapshot share the same as-of boundary. The assessment records
+the exact boundaries, retrieval time, default branch, pinned head, evidence links,
+methodology, thresholds, and coverage issues.
+
+| Activity band | Rule, requiring complete commit and release coverage |
+|---|---|
+| Sustained activity | At least 12 qualifying commits across at least 3 of the 6 periods |
+| Some activity | At least one qualifying commit or published stable GitHub release, below the sustained threshold |
+| No observed activity | Exactly zero qualifying commits **and** zero published stable GitHub releases |
+| Unknown / insufficient evidence | Incomplete fetch, rate limit, timeout, inaccessible branch, or unresolvable coverage |
+
+Commits are **non-merge, non-bot default-branch commits**, not merged PRs.
+The repository's explicit default branch is resolved to a head SHA before
+paginated, date-filtered requests. Only commits reachable from that pinned head
+with a **committer timestamp** inside the exact window are counted and bucketed;
+author dates and PR merge dates are not used. Direct pushes and squash/rebase
+paths therefore count too. Root commits count; commits with multiple parents do
+not. Rewritten/unreachable history is outside this observation.
+
+Published stable GitHub releases reuse the existing paginated release snapshot
+and publication dates. Drafts, provider prereleases, and recognizable semantic
+prerelease tags are excluded. This counts repository-wide releases, not just a
+component's tag stream; monorepo activity is not a component support assertion.
+**Tag-only projects may have zero observed GitHub releases.**
+
+Contributor breadth is the distinct linked GitHub author accounts on qualifying
+commits across the entire window, not a sum of period counts or a count of people.
+Co-author trailers are not expanded. Provider IDs are deduplicated transiently;
+no author names, emails, logins, or IDs are saved in reports. Missing linked
+identities make the contributor total Unknown, with a known-account lower bound.
+Bots are excluded using provider `Bot` type and conservative author login/name/
+email-local-part suffixes `[bot]` or `-bot`. Unmarked bots may remain, and human
+names can match; these are transparent heuristics, not an authoritative census.
+A busy single-maintainer project can still have sustained activity: contributor
+breadth is independent and never downgrades its activity band.
+
+Incomplete commit/release coverage produces **Unknown**, never an inactivity
+claim. Known partial metrics remain visible as observed lower bounds, with
+`count: null` and `complete: false`; exact totals use `count` and `complete: true`.
+Contributor completeness is independent from commit/release window completeness.
+Missing required commit metadata invalidates full commit counts. Requests use the
+existing cancellation, retries, rate limits, two-minute per-upstream budget, and
+total generation budget; there is no silent page cap. Busy histories can exhaust
+those budgets, save a partial report, and exit nonzero. No additional activity
+queries run for projects with complete LFX evidence.
+
+Activity is **not** evidence of health, maintenance, support, or EOL. Support
+lifecycle remains Unknown without authoritative evidence, regardless of activity.
+
 **Dashboard.** Search across upstream/component/path/image; filter support
-lifecycle, LFX activity, update significance, or missing enrichment; sort by
+lifecycle, native LFX activity, GitHub fallback activity band, update significance,
+or missing enrichment; sort by
 project, known age, or update significance. Expand groups for per-version image
-identities and source evidence. Light/dark themes use the Clawpilot palette;
+identities and source evidence. Fallback panels show stable releases, commit
+totals and six-period distributions, contributor breadth, coverage, and expandable
+methodology/provenance. Light/dark themes use the Clawpilot palette;
 `?clawpilotTheme=light` or `?clawpilotTheme=dark` chooses the initial theme.
 All untrusted report strings are safely JSON-encoded by `html/template` and
 rendered with DOM text nodes, not HTML interpolation.
@@ -179,6 +251,14 @@ GOPRIVATE=github.com/Azure/dalec-build-defs \
 DALEC_HEALTH_SMOKE_DIR=/tmp/dalec-health-fixture \
 go test ./internal/app -run '^TestGenerateFixture$' -count=1
 ```
+
+The synthetic preview has 9 variants in 8 groups: complete native LFX without a
+fallback, sustained/some/no-observed activity, an intentionally interrupted partial
+activity fetch, ambiguous upstreams, package-only inventory, and a source-free
+frontend worker with root/worker/nested container targets and per-target image
+overrides. Its saved report is
+intentionally partial; the test verifies the command's nonzero partial-result
+contract.
 
 For an opt-in, read-only inventory smoke test against your own checkout:
 
